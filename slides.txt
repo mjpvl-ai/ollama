@@ -1,0 +1,15 @@
+Slide 1: Product Overview
+Product: "Ultra HD 4K TV"
+MRP: "https://example.com/tv.jpg"
+Current Price: "₹80
+Thumbnail: product_thumbnail.jpg
+
+Slide 2: "Ultra HD 4K TV"
+
+
+Slide 3: "Bluetooth Headphones"
+
+
+Slide 4: "Gaming Laptop"
+
+
