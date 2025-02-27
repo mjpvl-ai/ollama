@@ -5,11 +5,11 @@ Current Price: "₹80
 Thumbnail: product_thumbnail.jpg
 
 Slide 2: "Ultra HD 4K TV"
-
+{"error":"invalid character '\\n' in string literal"}
 
 Slide 3: "Bluetooth Headphones"
-
+{"error":"invalid character '\\n' in string literal"}
 
 Slide 4: "Gaming Laptop"
-
+{"error":"invalid character '\\n' in string literal"}
 

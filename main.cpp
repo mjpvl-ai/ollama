@@ -1,34 +1,23 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <vector>
 #include <string>
+#include <vector>
 #include <curl/curl.h>
-#include <cstdlib>
+#include <json.h>
+#include "pugixml.hpp"
 
-// Structure to hold product details
-struct Product {
-    std::string name;
-    std::string description;
-    std::string image_url;
-    std::string mrp;
-    std::string current_price;
-};
-
-// Callback function to collect data from Curl
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
     size_t totalSize = size * nmemb;
     output->append((char*)contents, totalSize);
     return totalSize;
 }
 
-// Call the Ollama API to generate a review for a given prompt
+// Function to send request to Ollama API
 std::string ollama_infer(const std::string& model, const std::string& prompt) {
-    CURL* curl;
-    CURLcode res;
+    CURL* curl = curl_easy_init();
     std::string response;
-    
-    curl = curl_easy_init();
+
     if (curl) {
         std::string url = "http://localhost:11434/api/generate";
         std::string json_data = "{\"model\": \"" + model + "\", \"prompt\": \"" + prompt + "\", \"stream\": false}";
@@ -43,128 +32,97 @@ std::string ollama_infer(const std::string& model, const std::string& prompt) {
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
-        res = curl_easy_perform(curl);
+        CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
             std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
         }
+
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
     }
     return response;
 }
 
-// Read product data from CSV file
-std::vector<Product> read_csv(const std::string& filename) {
-    std::vector<Product> products;
+// Function to read CSV
+std::vector<std::pair<std::string, std::string>> readCSV(const std::string& filename) {
+    std::vector<std::pair<std::string, std::string>> products;
     std::ifstream file(filename);
-    std::string line;
-    
+    std::string line, name, description;
+
     if (!file.is_open()) {
-        std::cerr << "Error opening file: " << filename << std::endl;
+        std::cerr << "Error opening CSV file!" << std::endl;
         return products;
     }
-    
-    // Skip header line
-    std::getline(file, line);
-    
-    while (std::getline(file, line)) {
+
+    while (getline(file, line)) {
         std::stringstream ss(line);
-        Product product;
-        std::getline(ss, product.name, ',');
-        std::getline(ss, product.description, ',');
-        std::getline(ss, product.image_url, ',');
-        std::getline(ss, product.mrp, ',');
-        std::getline(ss, product.current_price, ',');
-        products.push_back(product);
+        if (getline(ss, name, ',') && getline(ss, description, ',')) {
+            products.push_back({name, description});
+        } else {
+            std::cerr << "Skipping malformed line in CSV: " << line << std::endl;
+        }
     }
     file.close();
     return products;
 }
 
-// Download image using a system call (using curl)
-void download_image(const std::string& url, const std::string& filename) {
-    std::string command = "curl -o " + filename + " " + url;
-    std::system(command.c_str());
-}
+// Function to generate PowerPoint slides using XML (pugixml)
+void generatePPTX(const std::string& pptxFile, const std::vector<std::pair<std::string, std::string>>& reviews) {
+    pugi::xml_document doc;
+    pugi::xml_node root = doc.append_child("pptx");
 
-// Convert text to speech and save as an MP3 file using espeak and ffmpeg
-void text_to_speech(const std::string& text, const std::string& filename) {
-    std::string command = "espeak \"" + text + "\" --stdout | ffmpeg -i - -ar 44100 -ac 2 -b:a 192k " + filename;
-    std::system(command.c_str());
-}
-
-// Create a slide deck file (slides.txt) that will be converted to a PPTX
-// The first slide includes an impressive thumbnail with image, MRP, and current price.
-void create_slides_file(const std::vector<Product>& products, const std::vector<std::string>& reviews) {
-    std::ofstream pptxFile("slides.txt");
-    if (!pptxFile) {
-        std::cerr << "Error creating slides.txt" << std::endl;
-        return;
+    for (const auto& review : reviews) {
+        pugi::xml_node slide = root.append_child("slide");
+        slide.append_child("title").text().set(review.first.c_str());
+        slide.append_child("content").text().set(review.second.c_str());
     }
-    
-    // First slide: Product overview (for the first product)
-    pptxFile << "Slide 1: Product Overview\n";
-    pptxFile << "Product: " << products[0].name << "\n";
-    pptxFile << "MRP: " << products[0].mrp << "\n";
-    pptxFile << "Current Price: " << products[0].current_price << "\n";
-    pptxFile << "Thumbnail: product_thumbnail.jpg\n\n";
-    
-    // Additional slides: One per product review
-    for (size_t i = 0; i < products.size(); i++) {
-        pptxFile << "Slide " << (i + 2) << ": " << products[i].name << "\n";
-        pptxFile << reviews[i] << "\n\n";
+
+    // Save as an XML-based PPTX file
+    if (!doc.save_file(pptxFile.c_str())) {
+        std::cerr << "Error: Failed to save PPTX file!" << std::endl;
     }
-    pptxFile.close();
-}
-
-// Convert the slides.txt file to a PPTX using LibreOffice command-line conversion
-void convert_to_pptx() {
-    std::string command = "libreoffice --headless --convert-to pptx slides.txt";
-    std::system(command.c_str());
-}
-
-// Convert the PPTX file to a video (e.g., MP4)
-void convert_pptx_to_video() {
-    std::string command = "libreoffice --headless --convert-to mp4 slides.pptx";
-    std::system(command.c_str());
 }
 
 int main() {
-    std::string model = "deepseek-llm:7b-chat"; // Change this to your desired model
-    std::string csv_file = "products.csv";      // CSV file with product details
-    
-    // Read product details from CSV
-    std::vector<Product> products = read_csv(csv_file);
-    if (products.empty()) {
-        std::cerr << "No product data found. Exiting." << std::endl;
-        return 1;
-    }
-    
-    std::vector<std::string> reviews;
-    
-    // Generate a review for each product using Ollama
-    for (size_t i = 0; i < products.size(); i++) {
-        std::string prompt = "Write a professional review for the following product description:\n" + products[i].description;
+    std::string model = "deepseek-llm:7b-chat";
+    std::string csvFile = "products.csv";
+    std::string jsonOutputFile = "reviews.json";
+    std::string pptxFile = "product_reviews.xml"; // Change this to a valid PowerPoint format if needed
+
+    std::vector<std::pair<std::string, std::string>> products = readCSV(csvFile);
+    Json::Value jsonRoot;
+    std::vector<std::pair<std::string, std::string>> reviews;
+
+    for (const auto& product : products) {
+        std::string prompt = "Write a detailed review for the following product: " + product.second;
         std::string response = ollama_infer(model, prompt);
-        reviews.push_back(response);
-        
-        // Convert the review to audio (one audio file per product slide; note first slide uses image)
-        std::string audio_filename = "slide" + std::to_string(i + 2) + ".mp3";
-        text_to_speech(response, audio_filename);
+
+        Json::Value jsonResponse;
+        Json::CharReaderBuilder reader;
+        std::string errs;
+
+        std::istringstream s(response);
+        if (Json::parseFromStream(reader, s, &jsonResponse, &errs)) {
+            if (jsonResponse.isMember("response")) {
+                std::string review = jsonResponse["response"].asString();
+                jsonRoot[product.first] = review;
+                reviews.push_back({product.first, review});
+            } else {
+                std::cerr << "Unexpected API response format: " << response << std::endl;
+            }
+        } else {
+            std::cerr << "Failed to parse JSON response: " << errs << std::endl;
+        }
     }
-    
-    // Download the image for the first product and save as thumbnail
-    download_image(products[0].image_url, "product_thumbnail.jpg");
-    
-    // Create slides file from product details and reviews
-    create_slides_file(products, reviews);
-    
-    // Convert slides.txt to a PowerPoint file (PPTX)
-    convert_to_pptx();
-    
-    // Convert the PPTX file to a video output (e.g., MP4)
-    convert_pptx_to_video();
-    
-    std::cout << "Process complete. PPTX and video have been generated." << std::endl;
+
+    // Save JSON output
+    std::ofstream jsonFile(jsonOutputFile);
+    jsonFile << jsonRoot.toStyledString();
+    jsonFile.close();
+
+    // Generate PowerPoint
+    generatePPTX(pptxFile, reviews);
+
+    std::cout << "Reviews saved to " << jsonOutputFile << " and slides generated in " << pptxFile << std::endl;
     return 0;
 }
