@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <curl/curl.h>
 
 #define OUTPUT_FILE "output.txt"
@@ -22,7 +23,7 @@ size_t write_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {
         fprintf(stderr, "Failed to allocate memory\n");
         return 0;
     }
-    
+
     resp->data = temp;
     memcpy(&(resp->data[resp->size]), ptr, total_size);
     resp->size += total_size;
@@ -31,16 +32,18 @@ size_t write_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {
     return total_size;
 }
 
-// Function to send request to Ollama and save response
-void ollama_infer(const char *model, const char *prompt) {
+
+
+// Function to send request to Ollama and process response
+void ollama_infer(const char *model, const char *prompt, bool print_output) {
     CURL *curl;
     CURLcode res;
     struct ResponseData response = {NULL, 0};
     FILE *file;
 
     // JSON payload
-    char post_data[512];
-    snprintf(post_data, sizeof(post_data), "{\"model\": \"%s\", \"prompt\": \"%s\", \"stream\": false}", model, prompt);
+    char post_data[1024];
+    snprintf(post_data, sizeof(post_data), "{\"model\": \"%s\", \"prompt\": \"%s\", \"stream\": false, \"top_k\": 50}", model, prompt);
 
     // Initialize libcurl
     curl = curl_easy_init();
@@ -74,6 +77,11 @@ void ollama_infer(const char *model, const char *prompt) {
         } else {
             fprintf(stderr, "Failed to open file for writing\n");
         }
+
+        // Print response if enabled
+        if (print_output) {
+            printf("Response:\n%s\n", response.data);
+        }
     }
 
     // Cleanup
@@ -82,10 +90,16 @@ void ollama_infer(const char *model, const char *prompt) {
     free(response.data);
 }
 
-int main() {
-    const char *model = "deepseek-llm:7b-chat";  // Change model as needed
-    const char *prompt = "Explain the concept of reinforcement learning.";
+int main(int argc, char *argv[]) {
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <model> <prompt> <print_output (true/false)>\n", argv[0]);
+        return 1;
+    }
 
-    ollama_infer(model, prompt);
+    const char *model = argv[1];
+    const char *prompt = argv[2];
+    bool print_output = (strcmp(argv[3], "true") == 0);
+
+    ollama_infer(model, prompt, print_output);
     return 0;
 }
