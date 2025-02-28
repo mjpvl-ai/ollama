@@ -43,7 +43,7 @@ void ollama_infer(const char *model, const char *prompt, bool print_output) {
 
     // JSON payload
     char post_data[1024];
-    snprintf(post_data, sizeof(post_data), "{\"model\": \"%s\", \"prompt\": \"%s\", \"stream\": false, \"top_k\": 50}", model, prompt);
+    snprintf(post_data, sizeof(post_data), "{\"model\": \"%s\", \"prompt\": \"%s\", \"stream\": false}", model, prompt);
 
     // Initialize libcurl
     curl = curl_easy_init();
